@@ -140,10 +140,9 @@ def load_data():
     return data
 
 # ==========================================
-# 4. METEOGRAM & VISUALIZATION (AVIATION TACTICAL DESIGN)
+# 4. METEOGRAM & VISUALIZATION (HIGH CONTRAST & ROBUST HOVER)
 # ==========================================
 def plot_main_meteogram(data):
-    """Meteogram 4 Baris: T, RH, VIS, dan HS dengan Desain Militer/Aviation Standard."""
     fig = make_subplots(
         rows=4, cols=1, shared_xaxes=True, 
         vertical_spacing=0.06, 
@@ -155,37 +154,78 @@ def plot_main_meteogram(data):
         )
     )
     
-    # ROW 1: Suhu (Warna Tegas)
+    # ------------------------------------------
+    # ROW 1: SUHU (Garis Tebal, Warna Kontras Tinggi)
+    # ------------------------------------------
     if data['t'] is not None:
         df = data['t'].sort_values('Datetime')
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='T Max', line=dict(color='#ff4b4b', width=2)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='T Mean', line=dict(color='#ffa500', width=2, dash='dot')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='T Min', line=dict(color='#00bfff', width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='T Max', 
+            line=dict(color='#FF1E1E', width=3),
+            hovertemplate="<b>%{x|%B, 2021-2025}</b><br>Parameter: T Max<br>Nilai: %{y}°C<extra></extra>"
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='T Mean', 
+            line=dict(color='#FF9F1C', width=2.5, dash='dot'),
+            hovertemplate="<b>%{x|%B, 2021-2025}</b><br>Parameter: T Mean<br>Nilai: %{y}°C<extra></extra>"
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='T Min', 
+            line=dict(color='#00B4D8', width=3),
+            hovertemplate="<b>%{x|%B, 2021-2025}</b><br>Parameter: T Min<br>Nilai: %{y}°C<extra></extra>"
+        ), row=1, col=1)
 
-    # ROW 2: RH
+    # ------------------------------------------
+    # ROW 2: RH (Warna Terpisah Jelas dari Suhu)
+    # ------------------------------------------
     if data['rh'] is not None:
         df = data['rh'].sort_values('Datetime')
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='RH Max', line=dict(color='#00fa9a', width=2)), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='RH Mean', line=dict(color='#90ee90', width=2, dash='dot')), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='RH Min', line=dict(color='#cd853f', width=2)), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='RH Max', 
+            line=dict(color='#00A86B', width=3),
+            hovertemplate="<b>%{x|%B, 2021-2025}</b><br>Parameter: RH Max<br>Nilai: %{y}%<extra></extra>"
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='RH Mean', 
+            line=dict(color='#76BA1B', width=2.5, dash='dot'),
+            hovertemplate="<b>%{x|%B, 2021-2025}</b><br>Parameter: RH Mean<br>Nilai: %{y}%<extra></extra>"
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='RH Min', 
+            line=dict(color='#D94E34', width=3),
+            hovertemplate="<b>%{x|%B, 2021-2025}</b><br>Parameter: RH Min<br>Nilai: %{y}%<extra></extra>"
+        ), row=2, col=1)
 
-    # ROW 3: Visibility (Gradasi Biru)
+    # ------------------------------------------
+    # ROW 3: VISIBILITY (Warna Palet Kualitatif - Sangat Kontras)
+    # ------------------------------------------
     if data['vis'] is not None:
         df = data['vis'].sort_values('Datetime')
         cols = [c for c in df.columns if '<' in str(c) or '>' in str(c)]
-        colors_vis = px.colors.sequential.Blues[2:] 
+        # Palet warna tegas kustom agar antar kategori tidak membaur/saru
+        vivid_colors_vis = ['#03045E', '#0077B6', '#00B4D8', '#4EA8DE', '#56CFE1', '#72EFDD', '#FFB703', '#FB8500', '#D62828']
         for i, c in enumerate(cols):
-            color = colors_vis[i % len(colors_vis)]
-            fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'Vis {c}', marker_color=color), row=3, col=1)
+            color = vivid_colors_vis[i % len(vivid_colors_vis)]
+            fig.add_trace(go.Bar(
+                x=df['Datetime'], y=df[c], name=f'Vis {c}', 
+                marker_color=color,
+                hovertemplate=f"<b>%{{x|%B, 2021-2025}}</b><br>Kategori: Vis {c}<br>Frekuensi: %{{y}}%<extra></extra>"
+            ), row=3, col=1)
 
-    # ROW 4: HS (Gradasi Abu-abu/Hitam)
+    # ------------------------------------------
+    # ROW 4: HS (Warna Palet Taktis Berbeda dari Visibility)
+    # ------------------------------------------
     if data['hs'] is not None:
         df = data['hs'].sort_values('Datetime')
         cols = [c for c in df.columns if '<' in str(c)]
-        colors_hs = px.colors.sequential.Greys[2:] 
+        vivid_colors_hs = ['#264653', '#2A9D8F', '#E9C46A', '#F4A261', '#E76F51', '#A83279', '#6D597A']
         for i, c in enumerate(cols):
-            color = colors_hs[i % len(colors_hs)]
-            fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'HS {c}', marker_color=color), row=4, col=1)
+            color = vivid_colors_hs[i % len(vivid_colors_hs)]
+            fig.add_trace(go.Bar(
+                x=df['Datetime'], y=df[c], name=f'HS {c}', 
+                marker_color=color,
+                hovertemplate=f"<b>%{{x|%B, 2021-2025}}</b><br>Kategori: HS {c}<br>Frekuensi: %{{y}}%<extra></extra>"
+            ), row=4, col=1)
             
     fig.update_yaxes(title_text="Suhu (°C)", row=1, col=1)
     fig.update_yaxes(title_text="RH (%)", row=2, col=1)
@@ -193,33 +233,33 @@ def plot_main_meteogram(data):
     fig.update_yaxes(title_text="Freq (%)", row=4, col=1)
 
     fig.update_layout(
-        height=1100, 
+        height=1250, 
         barmode='stack', 
-        hovermode='x unified',
+        hovermode='x',  # Mengaktifkan deteksi crosshair X multi-layer agar seluruh baris terbaca sekaligus
         plot_bgcolor="rgba(0,0,0,0)", 
         paper_bgcolor="rgba(0,0,0,0)",
         legend=dict(
             orientation="v", 
             yanchor="top", y=1, 
             xanchor="left", x=1.02, 
-            bgcolor='rgba(0,0,0,0)',
-            bordercolor='rgba(128,128,128,0.3)',
-            borderwidth=1
+            bgcolor='rgba(0,0,0,0)',  # Transparan penuh agar tulisan legenda otomatis ganti putih/hitam mengikuti mode UI
+            font=dict(size=11)
         ),
-        margin=dict(l=50, r=150, t=60, b=40)
+        margin=dict(l=60, r=160, t=60, b=40)
     )
     
-    # ==========================================
-    # PERBAIKAN KRUSIAL HOVER DATE:
-    # tickformat="%b" -> label di bawah grafik tetap ringkas (Jan, Feb, Mar)
-    # hoverformat="%B, 2021-2025" -> tooltip saat di-hover akan berubah jadi format "May, 2021-2025"
-    # ==========================================
+    # Menambahkan garis pemandu vertikal (Spike Line) untuk mempermudah pembacaan antar subplots
     fig.update_xaxes(
         showgrid=True, 
         gridwidth=1, 
         gridcolor='rgba(128,128,128,0.2)', 
-        tickformat="%b", 
-        hoverformat="%B, 2021-2025"  # <--- INI KUNCI PERUBAHANNYA
+        tickformat="%b",
+        showspikes=True,
+        spikemode='across',
+        spikesnap='cursor',
+        spikedash='dash',
+        spikecolor='rgba(128,128,128,0.5)',
+        spikethickness=1
     )
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)')
     
@@ -296,7 +336,7 @@ def main():
     
     with tab1:
         st.subheader("Meteogram Multi-Parameter Terpadu")
-        st.info("Kursor dapat diarahkan ke grafik untuk melihat nilai spesifik (Tooltip). Klik legenda di sisi kanan untuk menyembunyikan/menampilkan parameter tertentu.")
+        st.info("Kursor dapat diarahkan ke grafik. Gerakkan kursor ke kanan/kiri untuk mengaktifkan garis pandu waktu (Spike Line) yang akan langsung mengunci nama bulan dan kategori secara detail.")
         fig_main = plot_main_meteogram(dataset)
         st.plotly_chart(fig_main, use_container_width=True)
         
