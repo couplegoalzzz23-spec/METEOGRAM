@@ -33,6 +33,14 @@ def get_season(month_num):
     elif month_num in [9, 10, 11]: return 'SON (Sep-Okt-Nov)'
     return 'Lainnya'
 
+def get_season_color(month_num):
+    # Mapping warna neon kontras tinggi berdasarkan kelompok musim
+    if month_num in [12, 1, 2]: return '#FF2A6D'  # Neon Cyber-Pink
+    elif month_num in [3, 4, 5]: return '#FF9900'  # Electric Amber
+    elif month_num in [6, 7, 8]: return '#05FF00'  # Neon Lime Green
+    elif month_num in [9, 10, 11]: return '#00F0FF' # Electric Cyan
+    return '#00FFCC'
+
 def map_month_to_datetime(month_str):
     month_map = {
         'JANUARY': 1, 'FEBRUARY': 2, 'MARCH': 3, 'APRIL': 4,
@@ -145,17 +153,18 @@ def plot_main_meteogram(data):
         )
     )
     
+    # Penempatan ke legend khusus (legend, legend2, legend3, legend4) agar sejajar per baris
     if data['t'] is not None:
         df = data['t'].sort_values('Datetime')
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='T Max', line=dict(color='#ff4b4b', width=2), legendgroup="suhu", legendgrouptitle_text="Suhu"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='T Mean', line=dict(color='#ffa500', width=2, dash='dot'), legendgroup="suhu"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='T Min', line=dict(color='#00bfff', width=2), legendgroup="suhu"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='T Max', line=dict(color='#ff4b4b', width=2), legend='legend'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='T Mean', line=dict(color='#ffa500', width=2, dash='dot'), legend='legend'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='T Min', line=dict(color='#00bfff', width=2), legend='legend'), row=1, col=1)
 
     if data['rh'] is not None:
         df = data['rh'].sort_values('Datetime')
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='RH Max', line=dict(color='#00fa9a', width=2), legendgroup="rh", legendgrouptitle_text="RH"), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='RH Mean', line=dict(color='#90ee90', width=2, dash='dot'), legendgroup="rh"), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='RH Min', line=dict(color='#cd853f', width=2), legendgroup="rh"), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='RH Max', line=dict(color='#00fa9a', width=2), legend='legend2'), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='RH Mean', line=dict(color='#90ee90', width=2, dash='dot'), legend='legend2'), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='RH Min', line=dict(color='#cd853f', width=2), legend='legend2'), row=2, col=1)
 
     if data['vis'] is not None:
         df = data['vis'].sort_values('Datetime')
@@ -163,7 +172,7 @@ def plot_main_meteogram(data):
         colors_vis = px.colors.sequential.Tealgrn[1:] 
         for i, c in enumerate(cols):
             color = colors_vis[i % len(colors_vis)]
-            fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'Vis {c}', marker_color=color, legendgroup="vis", legendgrouptitle_text="Visibility"), row=3, col=1)
+            fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'Vis {c}', marker_color=color, legend='legend3'), row=3, col=1)
 
     if data['hs'] is not None:
         df = data['hs'].sort_values('Datetime')
@@ -171,34 +180,47 @@ def plot_main_meteogram(data):
         colors_hs = px.colors.sequential.Purp[2:] 
         for i, c in enumerate(cols):
             color = colors_hs[i % len(colors_hs)]
-            fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'HS {c}', marker_color=color, legendgroup="hs", legendgrouptitle_text="HS"), row=4, col=1)
+            fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'HS {c}', marker_color=color, legend='legend4'), row=4, col=1)
             
     fig.update_yaxes(title_text="Suhu (°C)", row=1, col=1)
     fig.update_yaxes(title_text="RH (%)", row=2, col=1)
     fig.update_yaxes(title_text="Freq (%)", row=3, col=1)
     fig.update_yaxes(title_text="Freq (%)", row=4, col=1)
 
-    # PERBAIKAN 1: Legenda dibuat rapi dalam 1 blok vertikal (menghapus tracegroupgap)
+    # Konfigurasi Multi-Legend untuk Penyelarasan Posisi secara Presisi
     fig.update_layout(
         template="plotly_dark", 
-        height=1200, 
+        height=1250, 
         barmode='stack', 
         hovermode='x unified',
         plot_bgcolor="rgba(15, 20, 25, 1)", 
         paper_bgcolor="rgba(0,0,0,0)",       
+        
+        # Kotak Legenda Baris 1 (Suhu)
         legend=dict(
-            orientation="v",         
-            yanchor="top", 
-            y=1,                     
-            xanchor="left", 
-            x=1.02,                  
-            bgcolor='rgba(15, 20, 25, 0.8)',
-            bordercolor='rgba(128,128,128,0.5)',
-            borderwidth=1,
-            font=dict(size=11)
-            # tracegroupgap dihapus agar merapat sejajar
+            x=1.02, y=1.00, yanchor='top', xanchor='left',
+            title=dict(text="<b>Suhu</b>", font=dict(size=12, color="#ff4b4b")),
+            bgcolor='rgba(20, 25, 30, 0.7)', bordercolor='rgba(255,75,75,0.3)', borderwidth=1
         ),
-        margin=dict(l=60, r=180, t=80, b=50) # Margin kanan (r=180) agar legenda aman
+        # Kotak Legenda Baris 2 (RH)
+        legend2=dict(
+            x=1.02, y=0.73, yanchor='top', xanchor='left',
+            title=dict(text="<b>RH</b>", font=dict(size=12, color="#00fa9a")),
+            bgcolor='rgba(20, 25, 30, 0.7)', bordercolor='rgba(0,250,154,0.3)', borderwidth=1
+        ),
+        # Kotak Legenda Baris 3 (Visibility)
+        legend3=dict(
+            x=1.02, y=0.46, yanchor='top', xanchor='left',
+            title=dict(text="<b>Visibility</b>", font=dict(size=12, color="#00a896")),
+            bgcolor='rgba(20, 25, 30, 0.7)', bordercolor='rgba(0,168,150,0.3)', borderwidth=1
+        ),
+        # Kotak Legenda Baris 4 (HS)
+        legend4=dict(
+            x=1.02, y=0.19, yanchor='top', xanchor='left',
+            title=dict(text="<b>HS</b>", font=dict(size=12, color="#aa4bfa")),
+            bgcolor='rgba(20, 25, 30, 0.7)', bordercolor='rgba(170,75,250,0.3)', borderwidth=1
+        ),
+        margin=dict(l=60, r=180, t=80, b=50)
     )
     
     fig.update_xaxes(
@@ -243,67 +265,114 @@ def render_wind_dashboard(df_wind):
             fig_speed.update_layout(template="plotly_dark", plot_bgcolor="rgba(15, 20, 25, 1)", paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=-0.2))
             st.plotly_chart(fig_speed, use_container_width=True)
             
+    # SECTION 1: KEMBALIKAN WINDROSE MUSIMAN (DENGAN WARNA NEON KONTRAS TINGGI)
     st.markdown("---")
-    st.markdown("### 🎯 Windrose Bulanan Operasional 2021-2025 (Radar View)")
+    st.markdown("### 🎯 Windrose Musiman Operasional (Radar View)")
+    seasons = ['DJF (Des-Jan-Feb)', 'MAM (Mar-Apr-Mei)', 'JJA (Jun-Jul-Agt)', 'SON (Sep-Okt-Nov)']
+    season_colors = ['#FF2A6D', '#FF9900', '#05FF00', '#00F0FF'] # Definisi warna kontras tinggi per musim
     
-    # PERBAIKAN 3: Loop per-Bulan (12 Bulan), bukan lagi Musim
+    cols_wr_season = st.columns(4)
+    for i, season in enumerate(seasons):
+        season_data = df_wind[df_wind['Season'] == season]
+        if not season_data.empty and dir_cols:
+            r_vals = season_data[dir_cols].mean().values
+            theta_vals = [dir_map[c] for c in dir_cols]
+            
+            # Mendapatkan kecepatan dominan riil musiman
+            dom_speed_s = "N/A"
+            if speed_cols:
+                mean_speeds_s = season_data[speed_cols].mean()
+                dom_speed_s = mean_speeds_s.idxmax() if not mean_speeds_s.empty and mean_speeds_s.max() > 0 else "N/A"
+            
+            title_html_s = f"<b>{season}</b><br><span style='font-size:11px; color:#ffa500;'>Kec. Dominan: {dom_speed_s} Knot</span>"
+            
+            fig_wr_s = go.Figure(go.Barpolar(
+                r=r_vals, 
+                theta=theta_vals, 
+                name=season, 
+                marker_color=season_colors[i], 
+                opacity=0.85,
+                hovertemplate="Arah: %{theta}°<br>Frekuensi: %{r:.2f}%<extra></extra>"
+            ))
+            
+            fig_wr_s.update_layout(
+                template="plotly_dark",
+                title=dict(text=title_html_s, x=0.5, font=dict(size=13, color=season_colors[i])), 
+                polar=dict(
+                    bgcolor='rgba(15, 20, 25, 1)',
+                    angularaxis=dict(direction="clockwise", rotation=90, gridcolor='rgba(255,255,255,0.2)', tickfont=dict(size=10)),
+                    radialaxis=dict(
+                        gridcolor='rgba(255,255,255,0.2)', 
+                        showticklabels=True,  # Menampilkan angka di jaring lingkaran
+                        ticksuffix='%',       # Menambahkan tanda %
+                        tickfont=dict(size=9, color='rgba(255,255,255,0.7)'),
+                        angle=45
+                    )
+                ), 
+                paper_bgcolor='rgba(0,0,0,0)',
+                margin=dict(t=70, b=30, l=20, r=20)
+            )
+            cols_wr_season[i].plotly_chart(fig_wr_s, use_container_width=True)
+
+    # SECTION 2: WINDROSE BULANAN (GRID 3x4 DENGAN FORMAT JUDUL PER BULAN REKAP DATA RIIL)
+    st.markdown("---")
+    st.markdown("### 📅 Windrose Bulanan Operasional 2021-2025 (Radar View)")
+    
     month_names = {
         1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
         5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
         9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
     }
     
-    # Membuat grid 3 baris x 4 kolom
     for row in range(3):
-        cols_wr = st.columns(4)
+        cols_wr_month = st.columns(4)
         for col in range(4):
             month_num = row * 4 + col + 1
             month_label = month_names[month_num]
             
-            # Filter data khusus bulan tersebut
+            # Filter riil data berdasarkan urutan bulan dari excel
             month_data = df_wind[df_wind['Datetime'].dt.month == month_num]
             
             if not month_data.empty and dir_cols:
-                r_vals = month_data[dir_cols].mean().values
-                theta_vals = [dir_map[c] for c in dir_cols]
+                r_vals_m = month_data[dir_cols].mean().values
+                theta_vals_m = [dir_map[c] for c in dir_cols]
                 
-                # Menentukan Kecepatan Dominan
-                dom_speed = "N/A"
+                # Kalkulasi kecepatan dominan riil bulanan dari dataset
+                dom_speed_m = "N/A"
                 if speed_cols:
-                    mean_speeds = month_data[speed_cols].mean()
-                    dom_speed = mean_speeds.idxmax() if not mean_speeds.empty else "N/A"
+                    mean_speeds_m = month_data[speed_cols].mean()
+                    dom_speed_m = mean_speeds_m.idxmax() if not mean_speeds_m.empty and mean_speeds_m.max() > 0 else "N/A"
                 
-                # Judul disesuaikan format yang diminta
-                title_html = f"<b>{month_label} 2021-2025</b><br><span style='font-size:12px; color:#ff9900;'>Kec. Dominan: {dom_speed} Knot</span>"
+                vibrant_color = get_season_color(month_num)
+                title_html_m = f"<b>{month_label} 2021-2025</b><br><span style='font-size:11px; color:#ffa500;'>Kec. Dominan: {dom_speed_m} Knot</span>"
                 
-                # PERBAIKAN 2: Menambahkan hover detail persentase arah
-                fig_wr = go.Figure(go.Barpolar(
-                    r=r_vals, 
-                    theta=theta_vals, 
+                fig_wr_m = go.Figure(go.Barpolar(
+                    r=r_vals_m, 
+                    theta=theta_vals_m, 
                     name=month_label, 
-                    marker_color='#00ffcc', 
+                    marker_color=vibrant_color, 
                     opacity=0.85,
-                    hovertemplate="Arah: %{theta}°<br>Frekuensi: %{r:.1f}%<extra></extra>"
+                    hovertemplate="Arah: %{theta}°<br>Frekuensi: %{r:.2f}%<extra></extra>"
                 ))
                 
-                fig_wr.update_layout(
+                fig_wr_m.update_layout(
                     template="plotly_dark",
-                    title=dict(text=title_html, x=0.5, font=dict(size=14, color="#00ffcc")), 
+                    title=dict(text=title_html_m, x=0.5, font=dict(size=13, color=vibrant_color)), 
                     polar=dict(
                         bgcolor='rgba(15, 20, 25, 1)',
-                        angularaxis=dict(direction="clockwise", rotation=90, gridcolor='rgba(255,255,255,0.2)'),
+                        angularaxis=dict(direction="clockwise", rotation=90, gridcolor='rgba(255,255,255,0.2)', tickfont=dict(size=10)),
                         radialaxis=dict(
                             gridcolor='rgba(255,255,255,0.2)', 
-                            showticklabels=True, # MEMUNCULKAN ANGKA DI JARING RADIAL
-                            ticksuffix='%',      # Menambah logo % di angka
-                            tickfont=dict(size=9, color='rgba(255,255,255,0.6)'),
-                            angle=45             # Memutar angka agar mudah dibaca
+                            showticklabels=True,  # Menampilkan angka di jaring lingkaran bulanan
+                            ticksuffix='%',       # Menambahkan tanda %
+                            tickfont=dict(size=9, color='rgba(255,255,255,0.7)'),
+                            angle=45
                         )
                     ), 
                     paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=70, b=20, l=20, r=20) 
+                    margin=dict(t=70, b=30, l=20, r=20) 
                 )
-                cols_wr[col].plotly_chart(fig_wr, use_container_width=True)
+                cols_wr_month[col].plotly_chart(fig_wr_m, use_container_width=True)
 
 # ==========================================
 # 5. MAIN UI COMMAND CENTER
@@ -319,7 +388,7 @@ def main():
     tab1, tab2, tab3 = st.tabs(["📊 METEOGRAM INTEGRASI", "🧭 ANALISIS ANGIN", "📁 INSPEKSI DATA"])
     
     with tab1:
-        st.info("💡 **TIPS OPERASIONAL:** Arahkan kursor (*hover*) pada grafik untuk melihat pembacaan parameter. Klik item pada legenda di samping untuk *decluttering* parameter.")
+        st.info("💡 **TIPS OPERASIONAL:** Arahkan kursor (*hover*) pada grafik untuk melihat pembacaan parameter. Klik item pada kotak legenda di samping kanan untuk menyembunyikan/menampilkan jalur data.")
         fig_main = plot_main_meteogram(dataset)
         st.plotly_chart(fig_main, use_container_width=True)
         
