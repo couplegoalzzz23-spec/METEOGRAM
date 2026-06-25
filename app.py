@@ -119,6 +119,11 @@ def load_data():
         df_wind = df_wind.loc[:, ~df_wind.columns.astype(str).str.contains('Unnamed', case=False)]
         df_wind['Datetime'] = df_wind['DATE'].apply(map_month_to_datetime)
         
+        # PERBAIKAN POINT 1: Membersihkan nilai 'None' pada DIRECTION
+        if 'DIRECTION' in df_wind.columns:
+            df_wind['DIRECTION'] = df_wind['DIRECTION'].astype(str).replace(['None', 'none', 'nan', 'NaN'], 'CALM')
+            df_wind['DIRECTION'] = df_wind['DIRECTION'].fillna('CALM')
+        
         for c in df_wind.columns:
             if c not in ['DATE', 'DIRECTION', 'Datetime']:
                 df_wind[c] = pd.to_numeric(df_wind[c], errors='coerce').fillna(0)
@@ -175,6 +180,7 @@ def plot_main_meteogram(data):
     fig.update_yaxes(title_text="Freq (%)", row=3, col=1)
     fig.update_yaxes(title_text="Freq (%)", row=4, col=1)
 
+    # PERBAIKAN POINT 3: Memindahkan Legenda ke samping (Vertikal)
     fig.update_layout(
         template="plotly_dark", 
         height=1200, 
@@ -183,18 +189,19 @@ def plot_main_meteogram(data):
         plot_bgcolor="rgba(15, 20, 25, 1)", 
         paper_bgcolor="rgba(0,0,0,0)",       
         legend=dict(
-            orientation="h",         
+            orientation="v",         # Diubah menjadi Vertikal
             yanchor="top", 
-            y=-0.1,                  
-            xanchor="center", 
-            x=0.5, 
+            y=1,                     # Dimulai dari atas   
+            xanchor="left", 
+            x=1.02,                  # Di luar area plot (kanan)
             bgcolor='rgba(15, 20, 25, 0.8)',
             bordercolor='rgba(128,128,128,0.5)',
             borderwidth=1,
             font=dict(size=11),
-            tracegroupgap=15         
+            tracegroupgap=15         # Memisahkan grup parameter dengan rapi
         ),
-        margin=dict(l=60, r=40, t=80, b=150)
+        # Margin disesuaikan agar sisi kanan ada ruang untuk legenda, bawah dikurangi
+        margin=dict(l=60, r=160, t=80, b=50) 
     )
     
     fig.update_xaxes(
@@ -202,7 +209,7 @@ def plot_main_meteogram(data):
         gridwidth=1, 
         gridcolor='rgba(255,255,255,0.1)', 
         tickformat="%b", 
-        hoverformat="%B, Rekap 2021-2025" # Tooltip murni menunjukkan Bulan dan Rekap 2021-2025
+        hoverformat="%B, Rekap 2021-2025" 
     )
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(255,255,255,0.1)')
     
@@ -249,18 +256,27 @@ def render_wind_dashboard(df_wind):
             r_vals = season_data[dir_cols].mean().values
             theta_vals = [dir_map[c] for c in dir_cols]
             
+            # PERBAIKAN POINT 2: Ekstraksi Kecepatan Angin Dominan untuk tiap Musim
+            if speed_cols:
+                mean_speeds = season_data[speed_cols].mean()
+                dom_speed = mean_speeds.idxmax() if not mean_speeds.empty else "N/A"
+                # Menambahkan tag kecepatan di bawah judul
+                title_html = f"{season}<br><span style='font-size:12px; color:#ff9900;'>Kec. Dominan: {dom_speed} Knot</span>"
+            else:
+                title_html = f"{season}"
+
             fig_wr = go.Figure(go.Barpolar(r=r_vals, theta=theta_vals, name=season, marker_color='#00ffcc', opacity=0.85))
             
             fig_wr.update_layout(
                 template="plotly_dark",
-                title=dict(text=f"{season}", x=0.5, font=dict(size=14, color="#00ffcc")), 
+                title=dict(text=title_html, x=0.5, font=dict(size=14, color="#00ffcc")), 
                 polar=dict(
                     bgcolor='rgba(15, 20, 25, 1)',
                     angularaxis=dict(direction="clockwise", rotation=90, gridcolor='rgba(255,255,255,0.2)'),
                     radialaxis=dict(gridcolor='rgba(255,255,255,0.2)', showticklabels=False)
                 ), 
                 paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(t=50, b=30, l=20, r=20)
+                margin=dict(t=70, b=30, l=20, r=20) # Margin top ditambah sedikit agar judul + sub-judul muat
             )
             cols_wr[i].plotly_chart(fig_wr, use_container_width=True)
 
@@ -278,7 +294,7 @@ def main():
     tab1, tab2, tab3 = st.tabs(["📊 METEOGRAM INTEGRASI", "🧭 ANALISIS ANGIN", "📁 INSPEKSI DATA"])
     
     with tab1:
-        st.info("💡 **TIPS OPERASIONAL:** Arahkan kursor (*hover*) pada grafik untuk melihat pembacaan parameter. Klik item pada legenda di bawah untuk *decluttering* parameter.")
+        st.info("💡 **TIPS OPERASIONAL:** Arahkan kursor (*hover*) pada grafik untuk melihat pembacaan parameter. Klik item pada legenda di samping untuk *decluttering* parameter.")
         fig_main = plot_main_meteogram(dataset)
         st.plotly_chart(fig_main, use_container_width=True)
         
@@ -289,7 +305,7 @@ def main():
         st.markdown("### Status Matriks Data Asli")
         option = st.selectbox("Pilih Parameter Instrumen untuk Verifikasi:", list(dataset.keys()), format_func=lambda x: x.upper())
         if dataset[option] is not None:
-            # PERBAIKAN: Menyembunyikan kolom 'Datetime' fiktif agar tidak membingungkan user
+            # Menyembunyikan kolom 'Datetime' fiktif agar tidak membingungkan user
             df_display = dataset[option].drop(columns=['Datetime'], errors='ignore')
             st.dataframe(df_display, use_container_width=True)
         else:
