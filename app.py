@@ -12,9 +12,9 @@ from plotly.subplots import make_subplots
 # 2. PAGE CONFIG
 # ==========================================
 st.set_page_config(
-    page_title="Dashboard Klimatologi Taktis", 
+    page_title="Dashboard ACS Lanud RSN", 
     layout="wide", 
-    page_icon="🌤️"
+    page_icon="✈️"
 )
 
 # ==========================================
@@ -46,7 +46,7 @@ def parse_wind_sectors(columns):
         '17 - 18 - 19': 180, '20 - 21 - 22': 210, '23 - 24 - 25': 240,
         '26 - 27 - 28': 270, '29 - 30 - 31': 300, '32 - 33 - 34': 330
     }
-    # Membersihkan spasi untuk pencocokan yang kebal error (robust matching)
+    # Membersihkan spasi (robuse space handling) untuk pencocokan akurat
     clean_mapping = {k.replace(" ", ""): v for k, v in mapping.items()}
     
     result = {}
@@ -57,7 +57,7 @@ def parse_wind_sectors(columns):
     return result
 
 # ==========================================
-# 4. DATA LOADING & CACHING
+# 4. DATA LOADING & CACHING (.XLSX)
 # ==========================================
 @st.cache_data
 def load_data():
@@ -66,17 +66,17 @@ def load_data():
     
     # 1. Dataset Kelembapan Spesifik / HS
     try:
-        df = pd.read_csv("hs_2021_2025.csv")
+        df = pd.read_excel("hs_2021_2025.xlsx")
         df['Datetime'] = df['DATE'].apply(map_month_to_datetime)
         data['hs'] = df.sort_values('Datetime')
     except Exception: data['hs'] = None
         
     # 2. Dataset RH Max Min
     try:
-        df = pd.read_csv("rh_max_min_2021_2025.csv")
+        df = pd.read_excel("rh_max_min_2021_2025.xlsx")
         cols = df.columns.tolist()
         cols[0] = 'DATE'
-        if len(cols) >= 3: # Normalisasi header row
+        if len(cols) >= 3: # Normalisasi header row dari excel
             cols[-3], cols[-2], cols[-1] = 'DAILY_MEAN', 'RH_MAX', 'RH_MIN'
         df.columns = cols
         df = df.drop(0).reset_index(drop=True)
@@ -88,7 +88,7 @@ def load_data():
         
     # 3. Dataset T Max Min
     try:
-        df = pd.read_csv("t_max_min_2021_2025.csv")
+        df = pd.read_excel("t_max_min_2021_2025.xlsx")
         cols = df.columns.tolist()
         cols[0] = 'DATE'
         if len(cols) >= 3:
@@ -103,22 +103,22 @@ def load_data():
         
     # 4. Dataset Temperature
     try:
-        df = pd.read_csv("temperature_2021_2025.csv")
+        df = pd.read_excel("temperature_2021_2025.xlsx")
         df['Datetime'] = df['DATE'].apply(map_month_to_datetime)
         data['tavg'] = df.sort_values('Datetime')
     except Exception: data['tavg'] = None
         
     # 5. Dataset Visibility
     try:
-        df = pd.read_csv("visibility_2021_2025.csv")
+        df = pd.read_excel("visibility_2021_2025.xlsx")
         df['Datetime'] = df['DATE'].apply(map_month_to_datetime)
         data['vis'] = df.sort_values('Datetime')
     except Exception: data['vis'] = None
         
     # 6. Dataset Wind Direction
     try:
-        df_raw = pd.read_csv("WINDDIRECTION_2021_2025.csv")
-        headers = df_raw.iloc[0].tolist() # Ambil row index 0 sebagai header yang benar
+        df_raw = pd.read_excel("WINDDIRECTION_2021_2025.xlsx")
+        headers = df_raw.iloc[0].tolist() # Mengambil row index 0 sebagai header yang benar (sesuai gambar)
         df = df_raw.drop(0).reset_index(drop=True)
         df.columns = headers
         df['Datetime'] = df['DATE'].apply(map_month_to_datetime)
@@ -163,13 +163,13 @@ def plot_main_meteogram(data):
         for c in cols_to_plot:
             fig.add_trace(go.Bar(x=df_vis['Datetime'], y=df_vis[c], name=f'Vis {c}'), row=3, col=1)
             
-    fig.update_layout(height=800, title_text="Meteogram Klimatologi Multi-Parameter", barmode='stack', hovermode='x unified')
+    fig.update_layout(height=800, title_text="Meteogram Multi-Parameter", barmode='stack', hovermode='x unified')
     return fig
 
 def render_wind_dashboard(df_wind):
     """Merender tab khusus Klimatologi Angin."""
     if df_wind is None:
-        st.error("⚠️ Data WINDDIRECTION_2021_2025.csv gagal dimuat. Periksa format atau path file.")
+        st.error("⚠️ Data WINDDIRECTION_2021_2025.xlsx gagal dimuat. Periksa format atau keberadaan file.")
         return
         
     df_wind['Month_Num'] = df_wind['Datetime'].dt.month
@@ -209,7 +209,7 @@ def render_wind_dashboard(df_wind):
             fig_wr = go.Figure(go.Barpolar(
                 r=r_vals, theta=theta_vals, name=season, marker_color='royalblue', opacity=0.8
             ))
-            # Menyesuaikan arah Utara (0) di atas dan putaran searah jarum jam (Meteorological Standard)
+            # Menyesuaikan arah Utara (0) di atas dan putaran searah jarum jam
             fig_wr.update_layout(
                 title=f"Musim: {season}",
                 polar=dict(angularaxis=dict(direction="clockwise", rotation=90)),
@@ -233,8 +233,8 @@ def render_wind_dashboard(df_wind):
 # 6. MAIN UI / LAYOUT
 # ==========================================
 def main():
-    st.title("🛰️ Dashboard Klimatologi Taktis")
-    st.markdown("Sistem Informasi Interaktif berdasarkan observasi periode 2021-2025.")
+    st.title("✈️ Dashboard Aerodrome Climatological Summary (ACS)")
+    st.markdown("Sistem Informasi Cuaca Terintegrasi untuk Mendukung Operasional Pangkalan Militer Roesmin Nurjadin (Periode Observasi 2021-2025).")
     
     # Eksekusi Cache Data
     with st.spinner("Memuat dataset klimatologi..."):
@@ -243,7 +243,7 @@ def main():
     # Memeriksa peringatan dataset
     missing_files = [k for k, v in dataset.items() if v is None]
     if missing_files:
-        st.warning(f"Terdapat dataset yang tidak ditemukan/gagal dimuat: {', '.join(missing_files).upper()}. Pastikan file CSV tersedia di direktori root.")
+        st.warning(f"⚠️ Terdapat dataset yang gagal dimuat: {', '.join(missing_files).upper()}. Pastikan nama file .xlsx di GitHub sesuai.")
 
     # Membuat Sistem Tab
     tab1, tab2, tab3 = st.tabs(["📊 Meteogram Utama", "🧭 Dashboard Angin", "📁 Data Tabular Mentah"])
