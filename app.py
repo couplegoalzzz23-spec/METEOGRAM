@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 
+# Konfigurasi Halaman (Harus diletakkan paling atas)
 st.set_page_config(
     page_title="Dashboard ACS Lanud RSN", 
     layout="wide", 
@@ -33,15 +34,12 @@ def map_month_to_datetime(month_str):
     return pd.to_datetime(f"2021-{m:02d}-01")
 
 def safe_extract_min_max(filepath):
-    """Fungsi ekstraksi absolut untuk mengambil Mean, Max, Min dari 3 kolom terakhir."""
+    """Ekstraksi absolut untuk mengambil Mean, Max, Min dari 3 kolom terakhir."""
     try:
         df_raw = pd.read_excel(filepath, header=None)
-        # Cari baris di mana data bulan pertama (JANUARY) dimulai
         start_idx = df_raw[df_raw[0].astype(str).str.contains('JANUARY', case=False, na=False)].index[0]
-        # Ambil 12 baris ke bawah dari Januari
         df_data = df_raw.iloc[start_idx:start_idx+12].reset_index(drop=True)
         
-        # Ekstrak kolom ke-1 (Date), dan 3 kolom terujung kanan (Mean, Max, Min)
         df_clean = pd.DataFrame({
             'DATE': df_data.iloc[:, 0].astype(str).str.strip(),
             'DAILY_MEAN': pd.to_numeric(df_data.iloc[:, -3], errors='coerce'),
@@ -50,11 +48,11 @@ def safe_extract_min_max(filepath):
         })
         return df_clean
     except Exception as e:
-        st.error(f"Error membaca {filepath}: {e}")
+        st.error(f"⚠️ Error membaca {filepath}: {e}")
         return None
 
 def safe_extract_distribution(filepath):
-    """Fungsi sanitasi untuk data bertumpuk seperti Visibility dan HS."""
+    """Sanitasi untuk data bertumpuk seperti Visibility dan HS."""
     try:
         df_raw = pd.read_excel(filepath)
         df_raw = df_raw.dropna(axis=1, how='all')
@@ -71,13 +69,13 @@ def safe_extract_distribution(filepath):
         df_clean = df_raw[df_raw[date_col].astype(str).str.upper().str.strip().isin(months)].copy()
         df_clean.rename(columns={date_col: 'DATE'}, inplace=True)
         
-        # Ambil kolom Date dan semua kolom yang mengandung karakter '<' atau '>'
         dist_cols = [c for c in df_clean.columns if '<' in str(c) or '>' in str(c)]
         for c in dist_cols:
             df_clean[c] = pd.to_numeric(df_clean[c], errors='coerce').fillna(0)
             
         return df_clean[['DATE'] + dist_cols]
     except Exception as e:
+        st.error(f"⚠️ Error memproses {filepath}: {e}")
         return None
 
 def parse_wind_sectors(columns):
@@ -98,7 +96,7 @@ def parse_wind_sectors(columns):
 # ==========================================
 # 3. ROBUST DATA LOADING
 # ==========================================
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_data():
     data = {}
     
@@ -142,45 +140,45 @@ def load_data():
     return data
 
 # ==========================================
-# 4. METEOGRAM & VISUALIZATION 
+# 4. METEOGRAM & VISUALIZATION (AVIATION TACTICAL DESIGN)
 # ==========================================
 def plot_main_meteogram(data):
     """Meteogram 4 Baris: T, RH, VIS, dan HS dengan Desain Militer/Aviation Standard."""
     fig = make_subplots(
         rows=4, cols=1, shared_xaxes=True, 
-        vertical_spacing=0.08, # Jarak diperlebar agar tidak semrawut
+        vertical_spacing=0.06, 
         subplot_titles=(
-            "1. Profil Suhu Udara Maksimum, Rata-rata, & Minimum", 
-            "2. Profil Kelembapan Relatif (RH)", 
+            "1. Profil Suhu Udara (T Max, Mean, Min)", 
+            "2. Profil Kelembapan Relatif (RH Max, Mean, Min)", 
             "3. Distribusi Jarak Pandang (Visibility)", 
-            "4. Tinggi Dasar Awan (Height of Base of Lowest Cloud / HS)"
+            "4. Tinggi Dasar Awan Terendah (HS)"
         )
     )
     
-    # ROW 1: Suhu (Warna Tegas: Merah, Jingga, Biru)
+    # ROW 1: Suhu (Warna Tegas)
     if data['t'] is not None:
         df = data['t'].sort_values('Datetime')
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='T Max', line=dict(color='#d62728', width=2)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='T Mean', line=dict(color='#ff7f0e', width=2, dash='dot')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='T Min', line=dict(color='#1f77b4', width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='T Max', line=dict(color='#ff4b4b', width=2)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='T Mean', line=dict(color='#ffa500', width=2, dash='dot')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='T Min', line=dict(color='#00bfff', width=2)), row=1, col=1)
 
-    # ROW 2: RH (Warna Tegas: Hijau Tua, Hijau Muda, Cokelat)
+    # ROW 2: RH
     if data['rh'] is not None:
         df = data['rh'].sort_values('Datetime')
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='RH Max', line=dict(color='#2ca02c', width=2)), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='RH Mean', line=dict(color='#98df8a', width=2, dash='dot')), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='RH Min', line=dict(color='#8c564b', width=2)), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='RH Max', line=dict(color='#00fa9a', width=2)), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='RH Mean', line=dict(color='#90ee90', width=2, dash='dot')), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='RH Min', line=dict(color='#cd853f', width=2)), row=2, col=1)
 
-    # ROW 3: Visibility (Gradasi Biru Elegan)
+    # ROW 3: Visibility (Gradasi Biru)
     if data['vis'] is not None:
         df = data['vis'].sort_values('Datetime')
         cols = [c for c in df.columns if '<' in str(c) or '>' in str(c)]
-        colors_vis = px.colors.sequential.Blues[1:] # Hindari warna terlalu putih
+        colors_vis = px.colors.sequential.Blues[2:] 
         for i, c in enumerate(cols):
             color = colors_vis[i % len(colors_vis)]
             fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'Vis {c}', marker_color=color), row=3, col=1)
 
-    # ROW 4: HS (Gradasi Abu-abu/Hitam Taktis)
+    # ROW 4: HS (Gradasi Abu-abu/Hitam)
     if data['hs'] is not None:
         df = data['hs'].sort_values('Datetime')
         cols = [c for c in df.columns if '<' in str(c)]
@@ -189,27 +187,36 @@ def plot_main_meteogram(data):
             color = colors_hs[i % len(colors_hs)]
             fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'HS {c}', marker_color=color), row=4, col=1)
             
-    # Penyesuaian Sumbu dan Layout untuk Tampilan Bersih
     fig.update_yaxes(title_text="Suhu (°C)", row=1, col=1)
     fig.update_yaxes(title_text="RH (%)", row=2, col=1)
-    fig.update_yaxes(title_text="Frekuensi (%)", row=3, col=1)
-    fig.update_yaxes(title_text="Frekuensi (%)", row=4, col=1)
+    fig.update_yaxes(title_text="Freq (%)", row=3, col=1)
+    fig.update_yaxes(title_text="Freq (%)", row=4, col=1)
 
     fig.update_layout(
-        height=1300, # Diperbesar agar grafik tidak sesak
+        height=1100, 
         barmode='stack', 
         hovermode='x unified',
-        plot_bgcolor="rgba(240, 242, 246, 0.5)", # Warna latar abu-abu sangat muda agar rapi
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor='rgba(255,255,255,0.8)'),
-        margin=dict(l=40, r=20, t=80, b=40)
+        plot_bgcolor="rgba(0,0,0,0)", 
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(
+            orientation="v", 
+            yanchor="top", y=1, 
+            xanchor="left", x=1.02, 
+            bgcolor='rgba(0,0,0,0)',
+            bordercolor='rgba(128,128,128,0.3)',
+            borderwidth=1
+        ),
+        margin=dict(l=50, r=150, t=60, b=40)
     )
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='white', tickformat="%b")
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='white')
+    
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)', tickformat="%b")
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)')
+    
     return fig
 
 def render_wind_dashboard(df_wind):
     if df_wind is None:
-        st.error("⚠️ Data Angin gagal dimuat atau belum tersedia.")
+        st.warning("⚠️ Data Angin belum tersedia untuk dianalisis.")
         return
         
     df_wind['Season'] = df_wind['Datetime'].dt.month.apply(get_season)
@@ -226,6 +233,8 @@ def render_wind_dashboard(df_wind):
             seasonal_dir = df_wind.groupby('Season')[dir_cols].mean().reset_index()
             melt_dir = seasonal_dir.melt(id_vars='Season', value_vars=dir_cols, var_name='Arah', value_name='Frekuensi (%)')
             fig_dir = px.bar(melt_dir, x='Season', y='Frekuensi (%)', color='Arah', barmode='group', color_discrete_sequence=px.colors.qualitative.Prism)
+            fig_dir.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+            fig_dir.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)')
             st.plotly_chart(fig_dir, use_container_width=True)
         
     with col2:
@@ -234,6 +243,8 @@ def render_wind_dashboard(df_wind):
             seasonal_speed = df_wind.groupby('Season')[speed_cols].mean().reset_index()
             melt_speed = seasonal_speed.melt(id_vars='Season', value_vars=speed_cols, var_name='Kecepatan (Knot)', value_name='Frekuensi (%)')
             fig_speed = px.bar(melt_speed, x='Season', y='Frekuensi (%)', color='Kecepatan (Knot)', barmode='group', color_discrete_sequence=px.colors.sequential.Teal)
+            fig_speed.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+            fig_speed.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.2)')
             st.plotly_chart(fig_speed, use_container_width=True)
             
     st.markdown("---")
@@ -246,10 +257,16 @@ def render_wind_dashboard(df_wind):
             r_vals = season_data[dir_cols].mean().values
             theta_vals = [dir_map[c] for c in dir_cols]
             
-            fig_wr = go.Figure(go.Barpolar(r=r_vals, theta=theta_vals, name=season, marker_color='#2c3e50', opacity=0.8))
+            fig_wr = go.Figure(go.Barpolar(r=r_vals, theta=theta_vals, name=season, marker_color='#4682b4', opacity=0.8))
+            
             fig_wr.update_layout(
-                title=f"Musim: {season}", 
-                polar=dict(angularaxis=dict(direction="clockwise", rotation=90)), 
+                title=dict(text=f"Musim: {season}", x=0.5, font=dict(size=14)), 
+                polar=dict(
+                    bgcolor='rgba(0,0,0,0)',
+                    angularaxis=dict(direction="clockwise", rotation=90, gridcolor='rgba(128,128,128,0.3)', linecolor='rgba(128,128,128,0.3)'),
+                    radialaxis=dict(gridcolor='rgba(128,128,128,0.3)', linecolor='rgba(128,128,128,0.3)')
+                ), 
+                paper_bgcolor='rgba(0,0,0,0)',
                 margin=dict(t=40, b=20, l=20, r=20)
             )
             cols_wr[i].plotly_chart(fig_wr, use_container_width=True)
@@ -261,14 +278,14 @@ def main():
     st.title("✈️ Dashboard Aerodrome Climatological Summary (ACS)")
     st.markdown("**Sistem Informasi Cuaca Terintegrasi - Operasional Pangkalan Militer (2021-2025)**")
     
-    with st.spinner("Menyelaraskan data klimatologi..."):
+    with st.spinner("Menyelaraskan data klimatologi penerbangan..."):
         dataset = load_data()
 
     tab1, tab2, tab3 = st.tabs(["📊 Meteogram Integrasi", "🧭 Analisis Angin", "📁 Inspeksi Data (Debug)"])
     
     with tab1:
         st.subheader("Meteogram Multi-Parameter Terpadu")
-        st.info("Kursor dapat diarahkan ke grafik untuk melihat nilai spesifik (Tooltip). Klik legenda untuk menyembunyikan/menampilkan parameter tertentu.")
+        st.info("Kursor dapat diarahkan ke grafik untuk melihat nilai spesifik (Tooltip). Klik legenda di sisi kanan untuk menyembunyikan/menampilkan parameter tertentu.")
         fig_main = plot_main_meteogram(dataset)
         st.plotly_chart(fig_main, use_container_width=True)
         
@@ -281,7 +298,7 @@ def main():
         if dataset[option] is not None:
             st.dataframe(dataset[option], use_container_width=True)
         else:
-            st.error(f"❌ Data {option.upper()} gagal diekstrak. Pastikan file tersedia.")
+            st.error(f"❌ Data {option.upper()} gagal diekstrak. Pastikan file Excel tersedia di direktori yang sama dengan aplikasi.")
 
 if __name__ == "__main__":
     main()
