@@ -209,7 +209,18 @@ def plot_main_meteogram(data):
         margin=dict(l=50, r=150, t=60, b=40)
     )
     
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)', tickformat="%b")
+    # ==========================================
+    # PERBAIKAN KRUSIAL HOVER DATE:
+    # tickformat="%b" -> label di bawah grafik tetap ringkas (Jan, Feb, Mar)
+    # hoverformat="%B, 2021-2025" -> tooltip saat di-hover akan berubah jadi format "May, 2021-2025"
+    # ==========================================
+    fig.update_xaxes(
+        showgrid=True, 
+        gridwidth=1, 
+        gridcolor='rgba(128,128,128,0.2)', 
+        tickformat="%b", 
+        hoverformat="%B, 2021-2025"  # <--- INI KUNCI PERUBAHANNYA
+    )
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(128,128,128,0.2)')
     
     return fig
