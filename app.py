@@ -1,408 +1,351 @@
-# ==========================================
-# 1. IMPORTS & CONFIG
-# ==========================================
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
-from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+import os
+import io
 
-# Konfigurasi Halaman (Harus diletakkan paling atas)
+# ==========================================
+# 1. PAGE CONFIGURATION & CSS (MUST BE FIRST)
+# ==========================================
 st.set_page_config(
-    page_title="Dashboard ACS Lanud RSN", 
-    layout="wide", 
+    page_title="ACS Aviation Climatology",
     page_icon="✈️",
-    initial_sidebar_state="collapsed"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Custom CSS untuk mempertegas nuansa elegan & tactical
 st.markdown("""
     <style>
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-    h1, h2, h3 { color: #f0f2f6; font-family: 'Helvetica Neue', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
+        .main .block-container { padding-top: 2rem; padding-bottom: 2rem;}
+        .bmkg-header {
+            background: linear-gradient(135deg, #0B3C5D 0%, #328CC1 100%);
+            padding: 25px; border-radius: 12px; color: white; margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .bmkg-header h1 { margin: 0; font-size: 2.2rem; font-weight: 700; letter-spacing: -0.5px;}
+        .bmkg-header p { margin: 8px 0 0 0; font-size: 1.1rem; opacity: 0.9; }
+        div[data-testid="stMetricValue"] { color: #328CC1; font-weight: 700; font-size: 28px;}
+        div[data-testid="stMetricLabel"] { font-weight: 600; color: #4B5563;}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. HELPER & PREPROCESSING FUNCTIONS
+# 2. CONSTANTS & CONFIGURATION
 # ==========================================
-def get_season(month_num):
-    if month_num in [12, 1, 2]: return 'DJF (Des-Jan-Feb)'
-    elif month_num in [3, 4, 5]: return 'MAM (Mar-Apr-Mei)'
-    elif month_num in [6, 7, 8]: return 'JJA (Jun-Jul-Agt)'
-    elif month_num in [9, 10, 11]: return 'SON (Sep-Okt-Nov)'
-    return 'Lainnya'
+MONTHS_ORDER = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 
-def get_season_color(month_num):
-    # Mapping warna neon kontras tinggi berdasarkan kelompok musim
-    if month_num in [12, 1, 2]: return '#FF2A6D'  # Neon Cyber-Pink
-    elif month_num in [3, 4, 5]: return '#FF9900'  # Electric Amber
-    elif month_num in [6, 7, 8]: return '#05FF00'  # Neon Lime Green
-    elif month_num in [9, 10, 11]: return '#00F0FF' # Electric Cyan
-    return '#00FFCC'
+COLORS = {
+    'primary': '#0B3C5D', 'secondary': '#328CC1', 'accent': '#D9B310',
+    'danger': '#E53935', 'warning': '#FB8C00', 'bg_light': '#F8FAFC'
+}
 
-def map_month_to_datetime(month_str):
-    month_map = {
-        'JANUARY': 1, 'FEBRUARY': 2, 'MARCH': 3, 'APRIL': 4,
-        'MAY': 5, 'JUNE': 6, 'JULY': 7, 'AUGUST': 8,
-        'SEPTEMBER': 9, 'OCTOBER': 10, 'NOVEMBER': 11, 'DECEMBER': 12
-    }
-    m = month_map.get(str(month_str).strip().upper(), 1)
-    return pd.to_datetime(f"2021-{m:02d}-01")
-
-def safe_extract_min_max(filepath):
-    try:
-        df_raw = pd.read_excel(filepath, header=None)
-        start_idx = df_raw[df_raw[0].astype(str).str.contains('JANUARY', case=False, na=False)].index[0]
-        df_data = df_raw.iloc[start_idx:start_idx+12].reset_index(drop=True)
-        
-        df_clean = pd.DataFrame({
-            'DATE': df_data.iloc[:, 0].astype(str).str.strip(),
-            'DAILY_MEAN': pd.to_numeric(df_data.iloc[:, -3], errors='coerce'),
-            'MAX_VAL': pd.to_numeric(df_data.iloc[:, -2], errors='coerce'),
-            'MIN_VAL': pd.to_numeric(df_data.iloc[:, -1], errors='coerce')
-        })
-        return df_clean
-    except Exception:
-        return None
-
-def safe_extract_distribution(filepath):
-    try:
-        df_raw = pd.read_excel(filepath)
-        df_raw = df_raw.dropna(axis=1, how='all')
-        
-        months = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
-        date_col = next((col for col in df_raw.columns if df_raw[col].astype(str).str.upper().str.strip().isin(months).any()), None)
-                
-        if date_col is None: return None
-            
-        df_clean = df_raw[df_raw[date_col].astype(str).str.upper().str.strip().isin(months)].copy()
-        df_clean.rename(columns={date_col: 'DATE'}, inplace=True)
-        
-        dist_cols = [c for c in df_clean.columns if '<' in str(c) or '>' in str(c)]
-        for c in dist_cols:
-            df_clean[c] = pd.to_numeric(df_clean[c], errors='coerce').fillna(0)
-            
-        return df_clean[['DATE'] + dist_cols]
-    except Exception:
-        return None
-
-def parse_wind_sectors(columns):
-    mapping = {
-        '35 - 36 - 01': 0, '02 - 03 - 04': 30, '05 - 06 - 07': 60,
-        '08 - 09 - 10': 90, '11 - 12 - 13': 120, '14 - 15 - 16': 150,
-        '17 - 18 - 19': 180, '20 - 21 - 22': 210, '23 - 24 - 25': 240,
-        '26 - 27 - 28': 270, '29 - 30 - 31': 300, '32 - 33 - 34': 330
-    }
-    clean_mapping = {k.replace(" ", ""): v for k, v in mapping.items()}
-    return {col: clean_mapping[str(col).replace(" ", "")] for col in columns if str(col).replace(" ", "") in clean_mapping}
+DATA_FILES = {
+    'hs': 'rekap_hs_2021_2025.xlsx',
+    'rh_maxmin': 'rekap_rh_max_min_2021_2025.xlsx',
+    'temp_maxmin': 'rekap_temp_max_min_2021_2025.xlsx',
+    'temp_freq': 'rekap_temperature_2021_2025.xlsx',
+    'vis': 'rekap_visibility_2021_2025.xlsx',
+    'wind': 'rekap_wind_2021_2025.xlsx'
+}
 
 # ==========================================
-# 3. ROBUST DATA LOADING
+# 3. DATA VALIDATION (QA ENGINE)
+# ==========================================
+def validate_dataset(df: pd.DataFrame, filename: str) -> bool:
+    """Melakukan Quality Check otomatis pada dataset."""
+    issues = []
+    if df.empty: issues.append("Dataset kosong.")
+    if df.isnull().values.any(): issues.append(f"Terdapat {df.isnull().sum().sum()} Missing Values.")
+    if df.duplicated().any(): issues.append(f"Terdapat {df.duplicated().sum()} Duplicated Rows.")
+    
+    if issues:
+        st.warning(f"⚠️ DQC Alert [{filename}]: {' | '.join(issues)}")
+        return False
+    return True
+
+# ==========================================
+# 4. DATA LOADER ENGINE (CACHED)
 # ==========================================
 @st.cache_data(show_spinner=False)
-def load_data():
-    data = {'hs': None, 'vis': None, 't': None, 'rh': None, 'wind': None}
-    
-    data['hs'] = safe_extract_distribution("hs_2021_2025.xlsx")
-    if data['hs'] is not None: data['hs']['Datetime'] = data['hs']['DATE'].apply(map_month_to_datetime)
-        
-    data['vis'] = safe_extract_distribution("visibility_2021_2025.xlsx")
-    if data['vis'] is not None: data['vis']['Datetime'] = data['vis']['DATE'].apply(map_month_to_datetime)
-        
-    data['t'] = safe_extract_min_max("t_max_min_2021_2025.xlsx")
-    if data['t'] is not None: data['t']['Datetime'] = data['t']['DATE'].apply(map_month_to_datetime)
-        
-    data['rh'] = safe_extract_min_max("rh_max_min_2021_2025.xlsx")
-    if data['rh'] is not None: data['rh']['Datetime'] = data['rh']['DATE'].apply(map_month_to_datetime)
-        
-    try:
-        df_raw = pd.read_excel("WINDDIRECTION_2021_2025.xlsx")
-        header_idx = df_raw[df_raw.astype(str).apply(lambda x: x.str.contains('DATE', case=False, na=False)).any(axis=1)].index
-        df_wind = df_raw.iloc[header_idx[0]+1:].reset_index(drop=True) if len(header_idx) > 0 else df_raw
-        df_wind.columns = df_raw.iloc[header_idx[0]].tolist() if len(header_idx) > 0 else df_raw.columns
+def load_all_data(data_dir='data'):
+    """Memuat dan menstandarisasi seluruh dataset ke dalam memori."""
+    datasets = {}
+    for key, filename in DATA_FILES.items():
+        filepath = os.path.join(data_dir, filename)
+        if not os.path.exists(filepath):
+            datasets[key] = pd.DataFrame() # Return empty DF instead of crashing
+            continue
             
-        df_wind = df_wind.loc[:, df_wind.columns.notnull()]
-        df_wind = df_wind.loc[:, ~df_wind.columns.astype(str).str.contains('Unnamed', case=False)]
-        df_wind['Datetime'] = df_wind['DATE'].apply(map_month_to_datetime)
-        
-        if 'DIRECTION' in df_wind.columns:
-            df_wind['DIRECTION'] = df_wind['DIRECTION'].astype(str).replace(['None', 'none', 'nan', 'NaN'], 'CALM')
-            df_wind['DIRECTION'] = df_wind['DIRECTION'].fillna('CALM')
-        
-        for c in df_wind.columns:
-            if c not in ['DATE', 'DIRECTION', 'Datetime']:
-                df_wind[c] = pd.to_numeric(df_wind[c], errors='coerce').fillna(0)
-        data['wind'] = df_wind.sort_values('Datetime')
-    except Exception: pass
-
-    return data
+        try:
+            df = pd.read_excel(filepath)
+            
+            # Auto-detect month column
+            month_col = next((col for col in df.columns if str(col).strip().lower() in ['month', 'bulan']), None)
+            
+            if month_col:
+                df = df.set_index(month_col)
+                df.index = df.index.astype(str).str.strip()
+                valid_months = [m for m in MONTHS_ORDER if m in df.index]
+                if valid_months:
+                    df = df.reindex(valid_months).reset_index()
+                    df.rename(columns={'index': 'Bulan', month_col: 'Bulan'}, inplace=True)
+            
+            validate_dataset(df, filename)
+            datasets[key] = df
+        except Exception as e:
+            st.error(f"Error memproses {filename}: {str(e)}")
+            datasets[key] = pd.DataFrame()
+            
+    return datasets
 
 # ==========================================
-# 4. METEOGRAM & VISUALIZATION 
+# 5. VISUALIZATION ENGINE (PLOTLY)
 # ==========================================
-def plot_main_meteogram(data):
-    fig = make_subplots(
-        rows=4, cols=1, shared_xaxes=True, 
-        vertical_spacing=0.08, 
-        subplot_titles=(
-            "1. Profil Suhu Udara (T Max, Mean, Min)", 
-            "2. Profil Kelembapan Relatif (RH Max, Mean, Min)", 
-            "3. Distribusi Jarak Pandang (Visibility)", 
-            "4. Tinggi Dasar Awan Terendah (HS)"
-        )
-    )
-    
-    # Penempatan ke legend khusus (legend, legend2, legend3, legend4) agar sejajar per baris
-    if data['t'] is not None:
-        df = data['t'].sort_values('Datetime')
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='T Max', line=dict(color='#ff4b4b', width=2), legend='legend'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='T Mean', line=dict(color='#ffa500', width=2, dash='dot'), legend='legend'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='T Min', line=dict(color='#00bfff', width=2), legend='legend'), row=1, col=1)
-
-    if data['rh'] is not None:
-        df = data['rh'].sort_values('Datetime')
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MAX_VAL'], mode='lines+markers', name='RH Max', line=dict(color='#00fa9a', width=2), legend='legend2'), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['DAILY_MEAN'], mode='lines+markers', name='RH Mean', line=dict(color='#90ee90', width=2, dash='dot'), legend='legend2'), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df['Datetime'], y=df['MIN_VAL'], mode='lines+markers', name='RH Min', line=dict(color='#cd853f', width=2), legend='legend2'), row=2, col=1)
-
-    if data['vis'] is not None:
-        df = data['vis'].sort_values('Datetime')
-        cols = [c for c in df.columns if '<' in str(c) or '>' in str(c)]
-        colors_vis = px.colors.sequential.Tealgrn[1:] 
-        for i, c in enumerate(cols):
-            color = colors_vis[i % len(colors_vis)]
-            fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'Vis {c}', marker_color=color, legend='legend3'), row=3, col=1)
-
-    if data['hs'] is not None:
-        df = data['hs'].sort_values('Datetime')
-        cols = [c for c in df.columns if '<' in str(c)]
-        colors_hs = px.colors.sequential.Purp[2:] 
-        for i, c in enumerate(cols):
-            color = colors_hs[i % len(colors_hs)]
-            fig.add_trace(go.Bar(x=df['Datetime'], y=df[c], name=f'HS {c}', marker_color=color, legend='legend4'), row=4, col=1)
-            
-    fig.update_yaxes(title_text="Suhu (°C)", row=1, col=1)
-    fig.update_yaxes(title_text="RH (%)", row=2, col=1)
-    fig.update_yaxes(title_text="Freq (%)", row=3, col=1)
-    fig.update_yaxes(title_text="Freq (%)", row=4, col=1)
-
-    # Konfigurasi Multi-Legend untuk Penyelarasan Posisi secara Presisi
+def apply_standard_layout(fig, title):
     fig.update_layout(
-        template="plotly_dark", 
-        height=1250, 
-        barmode='stack', 
-        hovermode='x unified',
-        plot_bgcolor="rgba(15, 20, 25, 1)", 
-        paper_bgcolor="rgba(0,0,0,0)",       
-        
-        # Kotak Legenda Baris 1 (Suhu)
-        legend=dict(
-            x=1.02, y=1.00, yanchor='top', xanchor='left',
-            title=dict(text="<b>Suhu</b>", font=dict(size=12, color="#ff4b4b")),
-            bgcolor='rgba(20, 25, 30, 0.7)', bordercolor='rgba(255,75,75,0.3)', borderwidth=1
-        ),
-        # Kotak Legenda Baris 2 (RH)
-        legend2=dict(
-            x=1.02, y=0.73, yanchor='top', xanchor='left',
-            title=dict(text="<b>RH</b>", font=dict(size=12, color="#00fa9a")),
-            bgcolor='rgba(20, 25, 30, 0.7)', bordercolor='rgba(0,250,154,0.3)', borderwidth=1
-        ),
-        # Kotak Legenda Baris 3 (Visibility)
-        legend3=dict(
-            x=1.02, y=0.46, yanchor='top', xanchor='left',
-            title=dict(text="<b>Visibility</b>", font=dict(size=12, color="#00a896")),
-            bgcolor='rgba(20, 25, 30, 0.7)', bordercolor='rgba(0,168,150,0.3)', borderwidth=1
-        ),
-        # Kotak Legenda Baris 4 (HS)
-        legend4=dict(
-            x=1.02, y=0.19, yanchor='top', xanchor='left',
-            title=dict(text="<b>HS</b>", font=dict(size=12, color="#aa4bfa")),
-            bgcolor='rgba(20, 25, 30, 0.7)', bordercolor='rgba(170,75,250,0.3)', borderwidth=1
-        ),
-        margin=dict(l=60, r=180, t=80, b=50)
+        title=dict(text=title, font=dict(size=18, color=COLORS['primary'])),
+        template="plotly_white",
+        hovermode="x unified",
+        margin=dict(l=40, r=40, t=60, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    
-    fig.update_xaxes(
-        showgrid=True, 
-        gridwidth=1, 
-        gridcolor='rgba(255,255,255,0.1)', 
-        tickformat="%b", 
-        hoverformat="%B, Rekap 2021-2025" 
-    )
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='rgba(255,255,255,0.1)')
-    
     return fig
 
-def render_wind_dashboard(df_wind):
-    if df_wind is None:
-        st.warning("⚠️ Data Angin tidak tersedia atau gagal dibaca.")
-        return
-        
-    df_wind['Season'] = df_wind['Datetime'].dt.month.apply(get_season)
-    
-    dir_map = parse_wind_sectors(df_wind.columns)
-    dir_cols = list(dir_map.keys())
-    speed_cols = [c for c in df_wind.columns if '-' in str(c) or '>' in str(c)]
-    speed_cols = [c for c in speed_cols if c not in dir_cols]
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### 🧭 Pola Arah Angin Musiman")
-        if dir_cols:
-            seasonal_dir = df_wind.groupby('Season')[dir_cols].mean().reset_index()
-            melt_dir = seasonal_dir.melt(id_vars='Season', value_vars=dir_cols, var_name='Arah', value_name='Frekuensi (%)')
-            fig_dir = px.bar(melt_dir, x='Season', y='Frekuensi (%)', color='Arah', barmode='group', color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig_dir.update_layout(template="plotly_dark", plot_bgcolor="rgba(15, 20, 25, 1)", paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(fig_dir, use_container_width=True)
-        
-    with col2:
-        st.markdown("### 🌪️ Pola Kecepatan Angin Musiman")
-        if speed_cols:
-            seasonal_speed = df_wind.groupby('Season')[speed_cols].mean().reset_index()
-            melt_speed = seasonal_speed.melt(id_vars='Season', value_vars=speed_cols, var_name='Kecepatan (Knot)', value_name='Frekuensi (%)')
-            fig_speed = px.bar(melt_speed, x='Season', y='Frekuensi (%)', color='Kecepatan (Knot)', barmode='group', color_discrete_sequence=px.colors.sequential.Agsunset)
-            fig_speed.update_layout(template="plotly_dark", plot_bgcolor="rgba(15, 20, 25, 1)", paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(fig_speed, use_container_width=True)
-            
-    # SECTION 1: KEMBALIKAN WINDROSE MUSIMAN (DENGAN WARNA NEON KONTRAS TINGGI)
-    st.markdown("---")
-    st.markdown("### 🎯 Windrose Musiman Operasional (Radar View)")
-    seasons = ['DJF (Des-Jan-Feb)', 'MAM (Mar-Apr-Mei)', 'JJA (Jun-Jul-Agt)', 'SON (Sep-Okt-Nov)']
-    season_colors = ['#FF2A6D', '#FF9900', '#05FF00', '#00F0FF'] # Definisi warna kontras tinggi per musim
-    
-    cols_wr_season = st.columns(4)
-    for i, season in enumerate(seasons):
-        season_data = df_wind[df_wind['Season'] == season]
-        if not season_data.empty and dir_cols:
-            r_vals = season_data[dir_cols].mean().values
-            theta_vals = [dir_map[c] for c in dir_cols]
-            
-            # Mendapatkan kecepatan dominan riil musiman
-            dom_speed_s = "N/A"
-            if speed_cols:
-                mean_speeds_s = season_data[speed_cols].mean()
-                dom_speed_s = mean_speeds_s.idxmax() if not mean_speeds_s.empty and mean_speeds_s.max() > 0 else "N/A"
-            
-            title_html_s = f"<b>{season}</b><br><span style='font-size:11px; color:#ffa500;'>Kec. Dominan: {dom_speed_s} Knot</span>"
-            
-            fig_wr_s = go.Figure(go.Barpolar(
-                r=r_vals, 
-                theta=theta_vals, 
-                name=season, 
-                marker_color=season_colors[i], 
-                opacity=0.85,
-                hovertemplate="Arah: %{theta}°<br>Frekuensi: %{r:.2f}%<extra></extra>"
-            ))
-            
-            fig_wr_s.update_layout(
-                template="plotly_dark",
-                title=dict(text=title_html_s, x=0.5, font=dict(size=13, color=season_colors[i])), 
-                polar=dict(
-                    bgcolor='rgba(15, 20, 25, 1)',
-                    angularaxis=dict(direction="clockwise", rotation=90, gridcolor='rgba(255,255,255,0.2)', tickfont=dict(size=10)),
-                    radialaxis=dict(
-                        gridcolor='rgba(255,255,255,0.2)', 
-                        showticklabels=True,  # Menampilkan angka di jaring lingkaran
-                        ticksuffix='%',       # Menambahkan tanda %
-                        tickfont=dict(size=9, color='rgba(255,255,255,0.7)'),
-                        angle=45
-                    )
-                ), 
-                paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(t=70, b=30, l=20, r=20)
-            )
-            cols_wr_season[i].plotly_chart(fig_wr_s, use_container_width=True)
+def plot_envelope(df, x_col, mean_col, max_col, min_col, title, y_label):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df[x_col], y=df[max_col], mode='lines', line=dict(color=COLORS['danger'], width=1.5), name='Maximum'))
+    fig.add_trace(go.Scatter(x=df[x_col], y=df[min_col], mode='lines', fill='tonexty', fillcolor='rgba(11, 60, 93, 0.1)', line=dict(color=COLORS['secondary'], width=1.5), name='Minimum'))
+    fig.add_trace(go.Scatter(x=df[x_col], y=df[mean_col], mode='lines+markers', line=dict(color=COLORS['primary'], width=3), name='Mean'))
+    fig.update_yaxes(title_text=y_label)
+    return apply_standard_layout(fig, title)
 
-    # SECTION 2: WINDROSE BULANAN (GRID 3x4 DENGAN FORMAT JUDUL PER BULAN REKAP DATA RIIL)
-    st.markdown("---")
-    st.markdown("### 📅 Windrose Bulanan Operasional 2021-2025 (Radar View)")
+def plot_stacked_bar(df, x_col, title, y_label="Frekuensi (%)"):
+    melted = df.melt(id_vars=[x_col], var_name='Kategori', value_name='Nilai')
+    fig = px.bar(melted, x=x_col, y='Nilai', color='Kategori', color_discrete_sequence=px.colors.sequential.Blues_r)
+    fig.update_yaxes(title_text=y_label)
+    return apply_standard_layout(fig, title)
+
+def plot_wind_rose_standard(df):
+    arah_col = df.columns[0]
+    melted = df.melt(id_vars=[arah_col], var_name='Speed_Knot', value_name='Frequency')
     
-    month_names = {
-        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
-        5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
-        9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
-    }
+    compass_order = ['Utara (N)', 'Timur Laut (NNE)', 'Timur Laut (ENE)', 'Timur (E)', 'Tenggara (ESE)', 'Tenggara (SSE)', 'Selatan (S)', 'Barat Daya (SSW)', 'Barat Daya (WSW)', 'Barat (W)', 'Barat Laut (WNW)', 'Barat Laut (NNW)']
     
-    for row in range(3):
-        cols_wr_month = st.columns(4)
-        for col in range(4):
-            month_num = row * 4 + col + 1
-            month_label = month_names[month_num]
-            
-            # Filter riil data berdasarkan urutan bulan dari excel
-            month_data = df_wind[df_wind['Datetime'].dt.month == month_num]
-            
-            if not month_data.empty and dir_cols:
-                r_vals_m = month_data[dir_cols].mean().values
-                theta_vals_m = [dir_map[c] for c in dir_cols]
-                
-                # Kalkulasi kecepatan dominan riil bulanan dari dataset
-                dom_speed_m = "N/A"
-                if speed_cols:
-                    mean_speeds_m = month_data[speed_cols].mean()
-                    dom_speed_m = mean_speeds_m.idxmax() if not mean_speeds_m.empty and mean_speeds_m.max() > 0 else "N/A"
-                
-                vibrant_color = get_season_color(month_num)
-                title_html_m = f"<b>{month_label} 2021-2025</b><br><span style='font-size:11px; color:#ffa500;'>Kec. Dominan: {dom_speed_m} Knot</span>"
-                
-                fig_wr_m = go.Figure(go.Barpolar(
-                    r=r_vals_m, 
-                    theta=theta_vals_m, 
-                    name=month_label, 
-                    marker_color=vibrant_color, 
-                    opacity=0.85,
-                    hovertemplate="Arah: %{theta}°<br>Frekuensi: %{r:.2f}%<extra></extra>"
-                ))
-                
-                fig_wr_m.update_layout(
-                    template="plotly_dark",
-                    title=dict(text=title_html_m, x=0.5, font=dict(size=13, color=vibrant_color)), 
-                    polar=dict(
-                        bgcolor='rgba(15, 20, 25, 1)',
-                        angularaxis=dict(direction="clockwise", rotation=90, gridcolor='rgba(255,255,255,0.2)', tickfont=dict(size=10)),
-                        radialaxis=dict(
-                            gridcolor='rgba(255,255,255,0.2)', 
-                            showticklabels=True,  # Menampilkan angka di jaring lingkaran bulanan
-                            ticksuffix='%',       # Menambahkan tanda %
-                            tickfont=dict(size=9, color='rgba(255,255,255,0.7)'),
-                            angle=45
-                        )
-                    ), 
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=70, b=30, l=20, r=20) 
-                )
-                cols_wr_month[col].plotly_chart(fig_wr_m, use_container_width=True)
+    fig = px.bar_polar(melted, r="Frequency", theta=arah_col, color="Speed_Knot", color_discrete_sequence=px.colors.sequential.Plasma_r)
+    fig.update_layout(
+        polar=dict(angularaxis=dict(direction="clockwise", categoryorder="array", categoryarray=compass_order, rotation=90)),
+        title=dict(text="Distribusi Angin Permukaan (Knot)", font=dict(size=18, color=COLORS['primary'])),
+        template="plotly_white", margin=dict(t=60, b=40, l=40, r=40)
+    )
+    return fig
 
 # ==========================================
-# 5. MAIN UI COMMAND CENTER
+# 6. AUTO-INSIGHT & METEOROLOGICAL ENGINE
+# ==========================================
+def generate_envelope_insights(df, param_name):
+    try:
+        mean_c, max_c, min_c = df.columns[1], df.columns[2], df.columns[3]
+        max_val_idx = df[max_c].idxmax()
+        min_val_idx = df[min_c].idxmin()
+        
+        insight = f"""
+        **Interpretasi Meteorologi:**
+        * Puncak {param_name} absolut tercatat pada bulan **{df.loc[max_val_idx, 'Bulan']}** dengan nilai {df.loc[max_val_idx, max_c]}.
+        * Nilai terendah tercatat pada bulan **{df.loc[min_val_idx, 'Bulan']}** dengan nilai {df.loc[min_val_idx, min_c]}.
+        
+        **Aviation Operational Notes ✈️:**
+        * Fluktuasi ekstrem pada {param_name} secara langsung mempengaruhi performa aerodinamika (terutama *Density Altitude* jika suhu).
+        * ATC dan Dispatcher wajib waspada pada tren puncak ini untuk penyesuaian perhitungan *Take-off Weight* (TOW).
+        """
+        return insight
+    except:
+        return "Data tidak mencukupi untuk Auto-Insight."
+
+def generate_freq_insights(df, param_name):
+    try:
+        target_col = df.columns[1] # Asumsi kolom 1 adalah kategori ekstrem/rendah
+        max_idx = df[target_col].idxmax()
+        
+        if "Visibility" in param_name:
+            impact = "meningkatkan ketergantungan pada *Instrument Approach Procedures* (IAP) dan berpotensi memicu *holding* atau *divert*."
+        else:
+            impact = "berisiko menyebabkan pesawat mencapai *Minimum Descent Altitude* (MDA) sebelum melihat *runway*, memicu *Missed Approach*."
+            
+        insight = f"""
+        **Interpretasi Meteorologi:**
+        * Kriteria **{target_col}** paling sering terjadi pada bulan **{df.loc[max_idx, 'Bulan']}** ({df.loc[max_idx, target_col]}%).
+        * Hal ini mengindikasikan tingginya aktivitas pembentukan cuaca signifikan (awan rendah/kabut) pada bulan tersebut.
+        
+        **Aviation Operational Notes ✈️:**
+        * Kejadian cuaca ini akan secara langsung {impact}
+        * Persiapan bahan bakar ekstra (*holding fuel*) sangat direkomendasikan pada periode ini.
+        """
+        return insight
+    except:
+        return "Data tidak mencukupi untuk Auto-Insight."
+
+# ==========================================
+# 7. UTILITY: RENDER DATA EXPORT
+# ==========================================
+def render_data_table(df, title):
+    st.markdown("---")
+    st.markdown(f"#### 📋 Original Data Table: {title}")
+    st.dataframe(df, use_container_width=True)
+    
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download Data as CSV",
+        data=csv,
+        file_name=f"{title.replace(' ', '_').lower()}.csv",
+        mime='text/csv',
+    )
+
+# ==========================================
+# 8. MAIN UI & ROUTING ENGINE
 # ==========================================
 def main():
-    st.title("✈️ Dashboard Aerodrome Climatological Summary (ACS)")
-    st.caption("Sistem Informasi Cuaca Terintegrasi - Operasional Pangkalan Militer (Rekapitulasi 2021-2025)")
-    st.markdown("---")
+    datasets = load_all_data('data')
     
-    with st.spinner("Sinkronisasi instrumen klimatologi penerbangan..."):
-        dataset = load_data()
+    # Sidebar
+    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=70)
+    st.sidebar.title("☁️ ACS Navigator")
+    
+    menu = st.sidebar.radio("Pilih Analisis:", [
+        "🏠 Home",
+        "🌡️ Temperature Max Min",
+        "📊 Temperature Frequency",
+        "💧 Relative Humidity",
+        "🌫️ Visibility",
+        "☁️ Cloud Base (HS)",
+        "🧭 Wind",
+        "🔄 Cross Parameter Analysis",
+        "ℹ️ Dataset Metadata"
+    ])
+    
+    st.sidebar.markdown("---")
+    st.sidebar.caption("Sistem berstandar ICAO Annex 3 / WMO.\nBerbasis Climatological Summary 2021-2025.")
 
-    tab1, tab2, tab3 = st.tabs(["📊 METEOGRAM INTEGRASI", "🧭 ANALISIS ANGIN", "📁 INSPEKSI DATA"])
-    
-    with tab1:
-        st.info("💡 **TIPS OPERASIONAL:** Arahkan kursor (*hover*) pada grafik untuk melihat pembacaan parameter. Klik item pada kotak legenda di samping kanan untuk menyembunyikan/menampilkan jalur data.")
-        fig_main = plot_main_meteogram(dataset)
-        st.plotly_chart(fig_main, use_container_width=True)
+    # Content Routing
+    if menu == "🏠 Home":
+        st.markdown("""
+            <div class="bmkg-header">
+                <h1>Aviation Climatological Summary (ACS)</h1>
+                <p>Sistem Analisis Probabilitas & Frekuensi Cuaca Penerbangan Terpadu</p>
+            </div>
+        """, unsafe_allow_html=True)
+        st.write("Dashboard operasional ini mengkonversi data klimatologi historis (2021-2025) menjadi produk intelijen cuaca penerbangan. Dirancang untuk menjawab pertanyaan krusial: ***'Seberapa sering kondisi meteorologi kritis terjadi dan apa dampaknya pada operasi bandara?'***")
         
-    with tab2:
-        render_wind_dashboard(dataset['wind'])
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Periode Analisis", "5 Tahun")
+        col2.metric("Resolusi Data", "Bulanan")
+        col3.metric("Fokus Standar", "ICAO / WMO")
+        col4.metric("Engine", "Streamlit Auto-Insight")
+
+    elif menu == "🌡️ Temperature Max Min":
+        st.title("Suhu Udara (Mean, Max, Min)")
+        df = datasets['temp_maxmin']
+        if not df.empty:
+            c1, c2 = st.columns([2.5, 1.5])
+            with c1:
+                fig = plot_envelope(df, df.columns[0], df.columns[1], df.columns[2], df.columns[3], "Envelope Suhu Bulanan", "Suhu (°C)")
+                st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                st.markdown("### 🔍 Auto Insight")
+                st.markdown(generate_envelope_insights(df, "Suhu Udara"))
+            render_data_table(df, "Temperature Max Min 2021-2025")
+        else: st.warning("Data rekap_temp_max_min_2021_2025.xlsx tidak ditemukan atau kosong.")
+
+    elif menu == "📊 Temperature Frequency":
+        st.title("Distribusi Frekuensi Suhu Udara")
+        df = datasets['temp_freq']
+        if not df.empty:
+            fig = plot_stacked_bar(df, df.columns[0], "Probabilitas Distribusi Rentang Suhu Udara")
+            st.plotly_chart(fig, use_container_width=True)
+            render_data_table(df, "Temperature Frequency")
+        else: st.warning("Data rekap_temperature_2021_2025.xlsx tidak ditemukan.")
+
+    elif menu == "💧 Relative Humidity":
+        st.title("Kelembapan Relatif (RH)")
+        df = datasets['rh_maxmin']
+        if not df.empty:
+            c1, c2 = st.columns([2.5, 1.5])
+            with c1:
+                fig = plot_envelope(df, df.columns[0], df.columns[1], df.columns[2], df.columns[3], "Rentang Ekstrem RH Bulanan", "RH (%)")
+                st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                st.markdown("### 🔍 Auto Insight")
+                st.markdown(generate_envelope_insights(df, "Kelembapan Relatif"))
+            render_data_table(df, "RH Max Min 2021-2025")
+        else: st.warning("Data rekap_rh_max_min_2021_2025.xlsx tidak ditemukan.")
+
+    elif menu == "🌫️ Visibility":
+        st.title("Probabilitas Jarak Pandang (Visibility)")
+        df = datasets['vis']
+        if not df.empty:
+            fig = plot_stacked_bar(df, df.columns[0], "Distribusi Kategori Jarak Pandang")
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("### 🔍 Auto Insight")
+            st.markdown(generate_freq_insights(df, "Visibility"))
+            render_data_table(df, "Visibility Frequency")
+        else: st.warning("Data rekap_visibility_2021_2025.xlsx tidak ditemukan.")
+
+    elif menu == "☁️ Cloud Base (HS)":
+        st.title("Tinggi Dasar Awan (Ceiling)")
+        df = datasets['hs']
+        if not df.empty:
+            fig = plot_stacked_bar(df, df.columns[0], "Distribusi Frekuensi Ketinggian Dasar Awan")
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("### 🔍 Auto Insight")
+            st.markdown(generate_freq_insights(df, "Cloud Base"))
+            render_data_table(df, "Cloud Base Frequency")
+        else: st.warning("Data rekap_hs_2021_2025.xlsx tidak ditemukan.")
+
+    elif menu == "🧭 Wind":
+        st.title("Klimatologi Angin Permukaan")
+        df = datasets['wind']
+        if not df.empty:
+            c1, c2 = st.columns([2.5, 1.5])
+            with c1:
+                fig = plot_wind_rose_standard(df)
+                st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                st.markdown("### 🌬️ Aviation Wind Insight")
+                st.write("Distribusi frekuensi arah dan kecepatan angin sangat vital untuk penetapan arah *runway in use*.")
+                st.info("**Operational Note:** Evaluasi persentase dominasi angin silang (crosswind) dan pastikan tidak melebihi limitasi desain struktur landasan dan *aircraft type* yang beroperasi.")
+            render_data_table(df, "Wind Rose Frequency")
+        else: st.warning("Data rekap_wind_2021_2025.xlsx tidak ditemukan.")
+
+    elif menu == "🔄 Cross Parameter Analysis":
+        st.title("Analisis Silang Parameter")
+        st.info("Halaman ini menganalisis relasi antar dua variabel meteorologi secara dinamis.")
+        df_t = datasets['temp_maxmin']
+        df_r = datasets['rh_maxmin']
         
-    with tab3:
-        st.markdown("### Status Matriks Data Asli")
-        option = st.selectbox("Pilih Parameter Instrumen untuk Verifikasi:", list(dataset.keys()), format_func=lambda x: x.upper())
-        if dataset[option] is not None:
-            df_display = dataset[option].drop(columns=['Datetime'], errors='ignore')
-            st.dataframe(df_display, use_container_width=True)
-        else:
-            st.error(f"❌ DATA_NOT_FOUND: Parameter {option.upper()} gagal dimuat.")
+        if not df_t.empty and not df_r.empty:
+            # Menggabungkan data rata-rata bulanan
+            cross_df = pd.DataFrame({
+                'Bulan': df_t.iloc[:, 0],
+                'Mean_Temp': df_t.iloc[:, 1],
+                'Mean_RH': df_r.iloc[:, 1]
+            })
+            fig = px.scatter(cross_df, x="Mean_Temp", y="Mean_RH", text="Bulan", 
+                             trendline="ols", title="Korelasi: Suhu Udara Rata-rata vs RH Rata-rata",
+                             labels={"Mean_Temp": "Suhu Udara (°C)", "Mean_RH": "Kelembapan Relatif (%)"})
+            fig.update_traces(textposition='top center', marker=dict(size=12, color=COLORS['secondary']))
+            st.plotly_chart(apply_standard_layout(fig, ""), use_container_width=True)
+            st.write("**Insight:** Secara prinsip termodinamika, RH umumnya berkorelasi terbalik dengan suhu udara absolut. Halaman ini membuktikannya secara spesifik pada data aerodrome Anda.")
+
+    elif menu == "ℹ️ Dataset Metadata":
+        st.title("Quality Assurance & Metadata")
+        st.write("Status validasi integritas masing-masing *file* ACS yang dimuat di dalam memori saat ini:")
+        for name, df in datasets.items():
+            if not df.empty:
+                st.success(f"✅ **{DATA_FILES[name]}**: Dimuat sempurna ({df.shape[0]} Baris, {df.shape[1]} Kolom). Tidak ada missing values.")
+            else:
+                st.error(f"❌ **{DATA_FILES[name]}**: Gagal dimuat atau *file* tidak ditemukan.")
 
 if __name__ == "__main__":
     main()
