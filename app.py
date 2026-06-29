@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import os
-import io
 
 # ==========================================
 # 1. PAGE CONFIGURATION & CSS (MUST BE FIRST)
@@ -70,7 +69,7 @@ def validate_dataset(df: pd.DataFrame, filename: str) -> bool:
 # 4. DATA LOADER ENGINE (CACHED)
 # ==========================================
 @st.cache_data(show_spinner=False)
-def load_all_data(data_dir='data'):
+def load_all_data(data_dir='.'): # PERBAIKAN: Default ke direktori root ('.') sesuai struktur repo GitHub
     """Memuat dan menstandarisasi seluruh dataset ke dalam memori."""
     datasets = {}
     for key, filename in DATA_FILES.items():
@@ -80,7 +79,8 @@ def load_all_data(data_dir='data'):
             continue
             
         try:
-            df = pd.read_excel(filepath)
+            # PERBAIKAN: Menambahkan engine='openpyxl' secara eksplisit
+            df = pd.read_excel(filepath, engine='openpyxl') 
             
             # Auto-detect month column
             month_col = next((col for col in df.columns if str(col).strip().lower() in ['month', 'bulan']), None)
@@ -207,7 +207,8 @@ def render_data_table(df, title):
 # 8. MAIN UI & ROUTING ENGINE
 # ==========================================
 def main():
-    datasets = load_all_data('data')
+    # PERBAIKAN: Pemanggilan fungsi memuat direktori root
+    datasets = load_all_data('.') 
     
     # Sidebar
     st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=70)
@@ -236,7 +237,7 @@ def main():
                 <p>Sistem Analisis Probabilitas & Frekuensi Cuaca Penerbangan Terpadu</p>
             </div>
         """, unsafe_allow_html=True)
-        st.write("Dashboard operasional ini mengkonversi data klimatologi historis (2021-2025) menjadi produk intelijen cuaca penerbangan. Dirancang untuk menjawab pertanyaan krusial: ***'Seberapa sering kondisi meteorologi kritis terjadi dan apa dampaknya pada operasi bandara?'***")
+        st.write("Dashboard operasional ini mengkonversi data klimatologi historis (2021-2025) menjadi produk intelijen cuaca penerbangan. Dirancang untuk menjawab pertanyaan krusial: ***'Seberapa sering kondisi meteorologi kritis terjadi dan apa dampaknya pada operasi penerbangan?'***")
         
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Periode Analisis", "5 Tahun")
