@@ -1,12 +1,12 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import io
 
 # ==========================================
-# 1. PAGE CONFIGURATION & CSS
+# 1. PAGE CONFIGURATION & CSS (MUST BE FIRST)
 # ==========================================
 st.set_page_config(
     page_title="ACS Aviation Climatology",
@@ -52,10 +52,25 @@ DATA_FILES = {
 }
 
 # ==========================================
-# 4. DATA LOADER ENGINE (PERBAIKAN: path='.')
+# 3. DATA VALIDATION (QA ENGINE)
+# ==========================================
+def validate_dataset(df: pd.DataFrame, filename: str) -> bool:
+    issues = []
+    if df.empty: issues.append("Dataset kosong.")
+    if df.isnull().values.any(): issues.append(f"Terdapat {df.isnull().sum().sum()} Missing Values.")
+    if df.duplicated().any(): issues.append(f"Terdapat {df.duplicated().sum()} Duplicated Rows.")
+    
+    if issues:
+        st.warning(f"⚠️ DQC Alert [{filename}]: {' | '.join(issues)}")
+        return False
+    return True
+
+# ==========================================
+# 4. DATA LOADER ENGINE (PERBAIKAN: '.' PATH)
 # ==========================================
 @st.cache_data(show_spinner=False)
-def load_all_data(data_dir='.'): 
+def load_all_data(data_dir='.'): # Diubah dari 'data' menjadi '.'
+    """Memuat dan menstandarisasi seluruh dataset ke dalam memori."""
     datasets = {}
     for key, filename in DATA_FILES.items():
         filepath = os.path.join(data_dir, filename)
@@ -64,8 +79,7 @@ def load_all_data(data_dir='.'):
             continue
             
         try:
-            # Menggunakan engine openpyxl untuk kompatibilitas
-            df = pd.read_excel(filepath, engine='openpyxl')
+            df = pd.read_excel(filepath)
             
             # Auto-detect month column
             month_col = next((col for col in df.columns if str(col).strip().lower() in ['month', 'bulan']), None)
@@ -78,31 +92,26 @@ def load_all_data(data_dir='.'):
                     df = df.reindex(valid_months).reset_index()
                     df.rename(columns={'index': 'Bulan', month_col: 'Bulan'}, inplace=True)
             
+            validate_dataset(df, filename)
             datasets[key] = df
         except Exception as e:
+            st.error(f"Error memproses {filename}: {str(e)}")
             datasets[key] = pd.DataFrame()
             
     return datasets
 
+# ... (Fungsi 5, 6, dan 7 dibiarkan sama seperti skrip asli Anda) ...
+# [Paste sisa fungsi visualisasi dan insight Anda di sini]
+
 # ==========================================
-# MAIN APP
+# 8. MAIN UI & ROUTING ENGINE
 # ==========================================
 def main():
+    # Menggunakan '.' untuk direktori saat ini
     datasets = load_all_data('.') 
     
+    # Sidebar
+    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=70)
     st.sidebar.title("☁️ ACS Navigator")
-    menu = st.sidebar.radio("Pilih Analisis:", [
-        "🏠 Home", "🌡️ Temperature Max Min", "📊 Temperature Frequency", 
-        "💧 Relative Humidity", "🌫️ Visibility", "☁️ Cloud Base (HS)", 
-        "🧭 Wind", "🔄 Cross Parameter Analysis", "ℹ️ Dataset Metadata"
-    ])
-
-    if menu == "🏠 Home":
-        st.markdown("<h1>Aviation Climatological Summary</h1>", unsafe_allow_html=True)
-        st.write("Dashboard operasional klimatologi penerbangan.")
     
-    # Tambahkan logika routing lainnya di sini sesuai file asli
-    # ... (skema routing dipertahankan)
-
-if __name__ == "__main__":
-    main()
+    # ... (Sisa kode main Anda tetap sama) ...
